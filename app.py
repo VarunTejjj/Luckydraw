@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
+from telethon.tl.functions.messages import DeleteHistoryRequest
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 import logging
@@ -33,6 +34,8 @@ if not os.path.exists(PARTICIPANTS_FILE):
         json.dump([], f)
 
 user_states = {}
+# Track users currently being approved so handle_private_message ignores them
+approving_users = set()
 
 
 async def load_participants():
@@ -84,6 +87,11 @@ def generate_qr(upi, amount="5", user_id="", timestamp=""):
 async def handle_private_message(event):
     try:
         user_id = event.sender_id
+
+        # ── Ignore messages from users being approved right now ──
+        if user_id in approving_users:
+            return
+
         message_text = event.raw_text.strip().lower()
 
         if user_id in user_states and user_states[user_id] == 'normal':
@@ -116,8 +124,7 @@ async def handle_private_message(event):
                     "Winner gets ₹10 in return"
                 )
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                upi = UPIS[0]
-                qr_file = generate_qr(upi, "5", str(user_id), now)
+                qr_file = generate_qr(UPIS[0], "5", str(user_id), now)
                 await event.reply(
                     file=qr_file,
                     message=(
@@ -128,7 +135,6 @@ async def handle_private_message(event):
                         f"After making payment send us the screenshot."
                     )
                 )
-
             elif message_text == "no":
                 user_states[user_id] = 'normal'
                 await event.reply(
@@ -164,56 +170,73 @@ async def handle_approval(event):
         if not is_admin:
             return
 
-        chat_id = event.chat_id
-        user_id = chat_id
+        chat_id  = event.chat_id
+        user_id  = chat_id
 
-        # ── Send approval message to user — chat stays intact ──
-        await event.reply(
-            "You Have Successfully Participated In The Lucky Draw 👍🏻\n\n"
-            "Wait For The Results To Win The Price , Good Luck 😸💗"
-        )
+        # Mark this user as being approved — suppresses handle_private_message
+        approving_users.add(user_id)
 
-        # ── Save participant to JSON ──
-        data = {
-            "chat_id":  chat_id,
-            "user_id":  user_id,
-            "time":     datetime.now().isoformat(),
-            "payment":  "Approved",
-            "status":   "Participated"
-        }
-        await save_participant(data)
-
-        # ── Get participant count for numbering ──
-        participants = await load_participants()
-        count = len(participants)
-
-        # ── Fetch user info ──
         try:
-            user_entity = await client.get_entity(user_id)
-            username = f"@{user_entity.username}" if user_entity.username else "No username"
-            nickname = user_entity.first_name or "No name"
-        except Exception:
-            username = "Unknown"
-            nickname = "Unknown"
+            # ── Step 1: Delete ENTIRE chat history from BOTH sides ──
+            await client(DeleteHistoryRequest(
+                peer=chat_id,
+                max_id=0,          # 0 = all messages
+                just_clear=False,  # False = delete for both sides
+                revoke=True        # revoke = remove from other side too
+            ))
 
-        # ── Log to Saved Messages ──
-        log_msg = (
-            f"✅ #{count} Joined\n"
-            f"👤 User ID : `{user_id}`\n"
-            f"🔗 Username : {username}\n"
-            f"📛 Nickname : {nickname}\n"
-            f"🕐 Time : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-        await client.send_message("me", log_msg, parse_mode="md")
+            # ── Step 2: Send only the approval message ──
+            await client.send_message(
+                chat_id,
+                "You Have Successfully Participated In The Lucky Draw 👍🏻\n\n"
+                "Wait For The Results To Win The Price , Good Luck 😸💗"
+            )
 
-        # ── Reset user state ──
-        if user_id in user_states:
-            del user_states[user_id]
+            # ── Step 3: Save participant ──
+            data = {
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "time":    datetime.now().isoformat(),
+                "payment": "Approved",
+                "status":  "Participated"
+            }
+            await save_participant(data)
 
-        # NOTE: Chat is NOT deleted — only approval message sent ✅
+            # ── Step 4: Count and get user info for Saved Messages log ──
+            participants = await load_participants()
+            count = len(participants)
+
+            try:
+                user_entity = await client.get_entity(user_id)
+                username = f"@{user_entity.username}" if user_entity.username else "No username"
+                nickname = user_entity.first_name or "No name"
+            except Exception:
+                username = "Unknown"
+                nickname = "Unknown"
+
+            # ── Step 5: Log to Saved Messages ──
+            log_msg = (
+                f"✅ #{count} Joined\n"
+                f"👤 User ID : `{user_id}`\n"
+                f"🔗 Username : {username}\n"
+                f"📛 Nickname : {nickname}\n"
+                f"🕐 Time : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            await client.send_message("me", log_msg, parse_mode="md")
+
+            # ── Step 6: Reset user state ──
+            if user_id in user_states:
+                del user_states[user_id]
+
+            logger.info(f"Approved user {user_id} — chat cleared, approval sent.")
+
+        finally:
+            # Always remove from approving set even if something fails
+            approving_users.discard(user_id)
 
     except Exception as e:
         logger.error(f"Approval error: {e}")
+        approving_users.discard(event.chat_id)
 
 
 async def main():
