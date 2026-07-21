@@ -34,7 +34,6 @@ if not os.path.exists(PARTICIPANTS_FILE):
         json.dump([], f)
 
 user_states = {}
-# Track users currently being approved so handle_private_message ignores them
 approving_users = set()
 
 
@@ -88,7 +87,7 @@ async def handle_private_message(event):
     try:
         user_id = event.sender_id
 
-        # ── Ignore messages from users being approved right now ──
+        # Ignore if this user is being approved right now
         if user_id in approving_users:
             return
 
@@ -170,29 +169,35 @@ async def handle_approval(event):
         if not is_admin:
             return
 
-        chat_id  = event.chat_id
-        user_id  = chat_id
+        chat_id = event.chat_id
+        user_id = chat_id
 
-        # Mark this user as being approved — suppresses handle_private_message
         approving_users.add(user_id)
 
         try:
-            # ── Step 1: Delete ENTIRE chat history from BOTH sides ──
-            await client(DeleteHistoryRequest(
-                peer=chat_id,
-                max_id=0,          # 0 = all messages
-                just_clear=False,  # False = delete for both sides
-                revoke=True        # revoke = remove from other side too
-            ))
+            # ── Step 1: Collect all message IDs in this chat ──
+            message_ids = []
+            async for msg in client.iter_messages(chat_id):
+                message_ids.append(msg.id)
 
-            # ── Step 2: Send only the approval message ──
+            # ── Step 2: Delete all collected messages from BOTH sides ──
+            if message_ids:
+                # Delete in batches of 100 (Telegram limit)
+                for i in range(0, len(message_ids), 100):
+                    batch = message_ids[i:i+100]
+                    await client.delete_messages(chat_id, batch, revoke=True)
+
+            # ── Step 3: Small pause so deletion settles ──
+            await asyncio.sleep(1)
+
+            # ── Step 4: Send approval message AFTER deletion ──
             await client.send_message(
                 chat_id,
                 "You Have Successfully Participated In The Lucky Draw 👍🏻\n\n"
                 "Wait For The Results To Win The Price , Good Luck 😸💗"
             )
 
-            # ── Step 3: Save participant ──
+            # ── Step 5: Save participant ──
             data = {
                 "chat_id": chat_id,
                 "user_id": user_id,
@@ -202,7 +207,7 @@ async def handle_approval(event):
             }
             await save_participant(data)
 
-            # ── Step 4: Count and get user info for Saved Messages log ──
+            # ── Step 6: Count and get user info ──
             participants = await load_participants()
             count = len(participants)
 
@@ -214,7 +219,7 @@ async def handle_approval(event):
                 username = "Unknown"
                 nickname = "Unknown"
 
-            # ── Step 5: Log to Saved Messages ──
+            # ── Step 7: Log to Saved Messages ──
             log_msg = (
                 f"✅ #{count} Joined\n"
                 f"👤 User ID : `{user_id}`\n"
@@ -224,14 +229,13 @@ async def handle_approval(event):
             )
             await client.send_message("me", log_msg, parse_mode="md")
 
-            # ── Step 6: Reset user state ──
+            # ── Step 8: Reset user state ──
             if user_id in user_states:
                 del user_states[user_id]
 
-            logger.info(f"Approved user {user_id} — chat cleared, approval sent.")
+            logger.info(f"Approved user {user_id} — chat cleared, approval message sent.")
 
         finally:
-            # Always remove from approving set even if something fails
             approving_users.discard(user_id)
 
     except Exception as e:
