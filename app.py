@@ -3,6 +3,7 @@ import json
 import os
 from datetime import datetime
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 import logging
@@ -14,19 +15,18 @@ logger = logging.getLogger(__name__)
 # Railway Environment Variables
 api_id = int(os.getenv('API_ID'))
 api_hash = os.getenv('API_HASH')
+session_string = os.getenv('SESSION_STRING')
 
-UPIS = [x.strip() for x in os.getenv('UPIS', 'varunloves@fam').split(',')]
-ADMINS = [x.strip() for x in os.getenv('ADMINS', 'VarunsLuckyDraw,8935742943').split(',')]
+if not session_string:
+    logger.error("❌ SESSION_STRING is missing in Variables!")
+    exit(1)
+
+client = TelegramClient(StringSession(session_string), api_id, api_hash)
 
 # Persistent storage
 DATA_DIR = '/data'
 os.makedirs(DATA_DIR, exist_ok=True)
-
-# Session
-SESSION_NAME = 'lucky_draw_session'
 PARTICIPANTS_FILE = os.path.join(DATA_DIR, 'participants.json')
-
-client = TelegramClient(SESSION_NAME, api_id, api_hash)
 
 # Initialize file
 if not os.path.exists(PARTICIPANTS_FILE):
@@ -62,7 +62,12 @@ def generate_qr(upi, amount="5", user_id="", timestamp=""):
     except:
         font = ImageFont.load_default()
     
-    texts = ["Lucky Draw Participation", f"User ID: {user_id}", f"Time: {timestamp}", f"Amount: ₹{amount}"]
+    texts = [
+        "Lucky Draw Participation",
+        f"User ID: {user_id}",
+        f"Time: {timestamp}",
+        f"Amount: ₹{amount}"
+    ]
     
     y = 10
     for text in texts:
@@ -82,35 +87,42 @@ async def handle_private_message(event):
 
         if user_id not in user_states:
             user_states[user_id] = 'waiting_yes_no'
-            await event.reply("Kya Apko Lucky Draw Meh Join Hona Hei?\n\nYes or No bhej do")
+            await event.reply("Kya Apko Lucky Draw Meh Join Hona Hei?\n\nAgar Join Hona Hei Tho \"Yes\" Bolke Type Karke Send Karo\nAgar Join Nahi Karna Hei Tho \"No\" Bolke Type Karke Send Karo")
             return
 
-        state = user_states.get(user_id)
+        current_state = user_states.get(user_id)
 
-        if state == 'waiting_yes_no':
+        if current_state == 'waiting_yes_no':
             if message_text == "yes":
                 user_states[user_id] = 'waiting_payment'
-                await event.reply("T&C\nThe account you get it will depend on your luck \nWinner gets ₹10 in return")
+                await event.reply("""T&C
+The account you get it will depend on your luck 
+Winner gets ₹10 in return""")
+                
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                qr_file = generate_qr(UPIS[0], "5", str(user_id), now)
-                await event.reply(file=qr_file, message=f"Lucky Draw Participation\nUser ID: {user_id}\nTime: {now}\n\nScreenshot bhejo")
+                upi = UPIS[0]
+                qr_file = generate_qr(upi, "5", str(user_id), now)
+                
+                await event.reply(file=qr_file, message=f"Lucky Draw Participation\nUser ID: {user_id}\nTime: {now}\nDate: {datetime.now().date()}\n\nAfter making payment send us the screenshot.")
+
             elif message_text == "no":
                 user_states[user_id] = 'normal'
-                await event.reply('Lucky Draw Join likh ke join kar sakte ho baad me')
+                await event.reply('Agar Apko Kabhitho lucky draw join karna hei tho bas "Lucky Draw Join" Bolke send karo')
 
-        elif state == 'waiting_payment':
+        elif current_state == 'waiting_payment':
             if "new qr" in message_text:
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                qr_file = generate_qr(UPIS[0], "5", str(user_id), now)
-                await event.reply(file=qr_file, message="New QR")
+                upi = UPIS[0]
+                qr_file = generate_qr(upi, "5", str(user_id), now)
+                await event.reply(file=qr_file, message="New QR Code generated.")
             elif event.message.photo or "screenshot" in message_text:
-                await event.reply("Wait for admin approval ✅")
+                await event.reply("Wait for admin approval (5 minutes) ✅")
                 user_states[user_id] = 'waiting_approval'
             else:
-                await event.reply("Screenshot bhejo ya NEW QR likho")
+                await event.reply("Please send payment screenshot or type NEW QR")
 
-        elif state == 'waiting_approval':
-            await event.reply("Admin approval ka intezar hai")
+        elif current_state == 'waiting_approval':
+            await event.reply("Already waiting for admin approval.")
 
     except Exception as e:
         logger.error(f"Error: {e}")
@@ -118,22 +130,38 @@ async def handle_private_message(event):
 @client.on(events.NewMessage(pattern=r'/approved', func=lambda e: e.is_private))
 async def handle_approval(event):
     try:
-        if str(event.sender_id) not in ADMINS:
+        sender = await event.get_sender()
+        if str(event.sender_id) not in ADMINS and (sender.username not in ADMINS if sender.username else True):
             return
+
         chat_id = event.chat_id
-        await event.reply("You Have Successfully Participated 👍🏻\nGood Luck 😸")
-        data = {"chat_id": chat_id, "time": datetime.now().isoformat(), "status": "Approved"}
+        user_id = chat_id
+
+        await event.reply("You Have Successfully Participated In The Lucky Draw 👍🏻\n\nWait For The Results To Win The Price , Good Luck 😸💗")
+
+        data = {
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "time": datetime.now().isoformat(),
+            "payment": "Approved",
+            "status": "Participated"
+        }
         await save_participant(data)
+
+        if user_id in user_states:
+            del user_states[user_id]
+
         try:
             await client.delete_dialog(chat_id, revoke=True)
         except:
             pass
+
     except Exception as e:
         logger.error(f"Approval error: {e}")
 
 async def main():
     await client.start()
-    logger.info("✅ Lucky Draw Bot Started on Railway!")
+    logger.info("✅ Lucky Draw Bot Started Successfully with StringSession!")
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
