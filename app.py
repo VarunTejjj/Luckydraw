@@ -18,8 +18,11 @@ api_hash = os.getenv('API_HASH')
 session_string = os.getenv('SESSION_STRING')
 
 if not session_string:
-    logger.error("❌ SESSION_STRING is missing in Variables!")
+    logger.error("❌ SESSION_STRING is missing!")
     exit(1)
+
+UPIS = [x.strip() for x in os.getenv('UPIS', 'varunloves@fam').split(',')]
+ADMINS = [x.strip() for x in os.getenv('ADMINS', 'VarunsLuckyDraw,8935742943').split(',')]
 
 client = TelegramClient(StringSession(session_string), api_id, api_hash)
 
@@ -28,7 +31,6 @@ DATA_DIR = '/data'
 os.makedirs(DATA_DIR, exist_ok=True)
 PARTICIPANTS_FILE = os.path.join(DATA_DIR, 'participants.json')
 
-# Initialize file
 if not os.path.exists(PARTICIPANTS_FILE):
     with open(PARTICIPANTS_FILE, 'w') as f:
         json.dump([], f)
@@ -82,8 +84,14 @@ def generate_qr(upi, amount="5", user_id="", timestamp=""):
 async def handle_private_message(event):
     try:
         user_id = event.sender_id
-        chat_id = event.chat_id
         message_text = event.raw_text.strip().lower()
+
+        # If user is in normal mode and says "lucky draw join"
+        if user_id in user_states and user_states[user_id] == 'normal':
+            if "lucky draw join" in message_text:
+                user_states[user_id] = 'waiting_yes_no'
+                await event.reply("Kya Apko Lucky Draw Meh Join Hona Hei?\n\nAgar Join Hona Hei Tho \"Yes\" Bolke Type Karke Send Karo\nAgar Join Nahi Karna Hei Tho \"No\" Bolke Type Karke Send Karo")
+            return
 
         if user_id not in user_states:
             user_states[user_id] = 'waiting_yes_no'
@@ -112,8 +120,7 @@ Winner gets ₹10 in return""")
         elif current_state == 'waiting_payment':
             if "new qr" in message_text:
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                upi = UPIS[0]
-                qr_file = generate_qr(upi, "5", str(user_id), now)
+                qr_file = generate_qr(UPIS[0], "5", str(user_id), now)
                 await event.reply(file=qr_file, message="New QR Code generated.")
             elif event.message.photo or "screenshot" in message_text:
                 await event.reply("Wait for admin approval (5 minutes) ✅")
