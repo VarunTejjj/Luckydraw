@@ -32,7 +32,8 @@ if not os.path.exists(PARTICIPANTS_FILE):
     with open(PARTICIPANTS_FILE, 'w') as f:
         json.dump([], f)
 
-user_states = {}
+user_states    = {}   # user_id -> state string
+user_upi_index = {}   # user_id -> current UPI index
 approving_users = set()
 
 
@@ -124,8 +125,8 @@ async def handle_private_message(event):
         if current_state == 'waiting_yes_no':
             if message_text == "yes":
                 user_states[user_id] = 'waiting_payment'
+                user_upi_index[user_id] = 0  # ✅ start at first UPI
 
-                # T&C message
                 await event.reply(
                     "📋 **Terms & Conditions** 📋\n\n"
                     "━━━━━━━━━━━━━━━━\n"
@@ -136,7 +137,6 @@ async def handle_private_message(event):
                     "💳 Neeche QR Code scan karke **₹5** pay karo aur screenshot bhejo! 👇🏻"
                 )
 
-                # QR message
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 qr_file = generate_qr(UPIS[0], "5", str(user_id), now)
                 await event.reply(
@@ -149,6 +149,7 @@ async def handle_private_message(event):
                         f"🆔 User ID  : `{user_id}`\n"
                         f"📅 Date     : {datetime.now().strftime('%d-%m-%Y')}\n"
                         f"🕐 Time     : {datetime.now().strftime('%I:%M %p')}\n"
+                        f"💳 UPI      : 1 of {len(UPIS)}\n"
                         "━━━━━━━━━━━━━━━━\n\n"
                         "📸 Payment ke baad **screenshot bhejo** — hum verify kar denge!\n\n"
                         "🔄 QR kaam nahi kar raha? Type karo ➜ `NEW QR`"
@@ -169,8 +170,13 @@ async def handle_private_message(event):
         # ── State: Waiting for Payment Screenshot ──
         elif current_state == 'waiting_payment':
             if "new qr" in message_text:
+                # ✅ Rotate to next UPI
+                current_idx = user_upi_index.get(user_id, 0)
+                next_idx = (current_idx + 1) % len(UPIS)
+                user_upi_index[user_id] = next_idx
+
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                qr_file = generate_qr(UPIS[0], "5", str(user_id), now)
+                qr_file = generate_qr(UPIS[next_idx], "5", str(user_id), now)
                 await event.reply(
                     file=qr_file,
                     message=(
@@ -181,11 +187,13 @@ async def handle_private_message(event):
                         f"🆔 User ID  : `{user_id}`\n"
                         f"📅 Date     : {datetime.now().strftime('%d-%m-%Y')}\n"
                         f"🕐 Time     : {datetime.now().strftime('%I:%M %p')}\n"
+                        f"💳 UPI      : {next_idx + 1} of {len(UPIS)}\n"
                         "━━━━━━━━━━━━━━━━\n\n"
                         "📸 Payment ke baad **screenshot bhejo**!\n\n"
                         "🔄 Phir bhi kaam nahi kar raha? Type karo ➜ `NEW QR`"
                     )
                 )
+
             elif event.message.photo or "screenshot" in message_text:
                 await event.reply(
                     "✅ **Screenshot Mil Gayi!**\n\n"
@@ -233,12 +241,10 @@ async def handle_approval(event):
         approving_users.add(user_id)
 
         try:
-            # ── Step 1: Collect all message IDs ──
             message_ids = []
             async for msg in client.iter_messages(chat_id):
                 message_ids.append(msg.id)
 
-            # ── Step 2: Delete all messages (both sides) ──
             if message_ids:
                 for i in range(0, len(message_ids), 100):
                     batch = message_ids[i:i+100]
@@ -246,7 +252,6 @@ async def handle_approval(event):
 
             await asyncio.sleep(1)
 
-            # ── Step 3: Send approval message ──
             await client.send_message(
                 chat_id,
                 "🎉 **Congratulations!** 🎉\n\n"
@@ -258,7 +263,6 @@ async def handle_approval(event):
                 "💗 Best of Luck — God bless you! 😸✨"
             )
 
-            # ── Step 4: Save participant ──
             data = {
                 "chat_id": chat_id,
                 "user_id": user_id,
@@ -268,7 +272,6 @@ async def handle_approval(event):
             }
             await save_participant(data)
 
-            # ── Step 5: Log to Saved Messages ──
             participants = await load_participants()
             count = len(participants)
 
@@ -291,9 +294,9 @@ async def handle_approval(event):
             )
             await client.send_message("me", log_msg, parse_mode="md")
 
-            # ── Step 6: Reset user state ──
-            if user_id in user_states:
-                del user_states[user_id]
+            # ✅ Clean up both state and UPI index
+            user_states.pop(user_id, None)
+            user_upi_index.pop(user_id, None)
 
             logger.info(f"Approved user {user_id} — chat cleared, approval message sent.")
 
