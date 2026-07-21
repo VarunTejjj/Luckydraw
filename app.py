@@ -19,7 +19,7 @@ if not session_string:
     logger.error("SESSION_STRING is missing!")
     exit(1)
 
-UPIS   = [x.strip() for x in os.getenv('UPIS', 'varunloves@fam').split(',')]
+UPIS = ["varunloves@fam", "kothapellivaruntej07@fam", "canyoubeatvarun@fam"]
 ADMINS = [x.strip() for x in os.getenv('ADMINS', 'VarunsLuckyDraw,8935742943').split(',')]
 
 client = TelegramClient(StringSession(session_string), api_id, api_hash)
