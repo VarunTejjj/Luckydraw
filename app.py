@@ -24,6 +24,8 @@ ADMINS = [x.strip() for x in os.getenv('ADMINS', 'VarunsLuckyDraw,8935742943').s
 # Persistent storage
 DATA_DIR = '/data'
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# Session path (important)
 SESSION_NAME = os.path.join(DATA_DIR, 'lucky_draw_session')
 PARTICIPANTS_FILE = os.path.join(DATA_DIR, 'participants.json')
 
@@ -131,7 +133,8 @@ Winner gets ₹10 in return""")
 @client.on(events.NewMessage(pattern=r'/approved', func=lambda e: e.is_private))
 async def handle_approval(event):
     try:
-        if str(event.sender_id) not in ADMINS and event.sender.username not in ADMINS:
+        sender = await event.get_sender()
+        if str(event.sender_id) not in ADMINS and (sender.username not in ADMINS if sender.username else True):
             return
 
         chat_id = event.chat_id
@@ -151,7 +154,6 @@ async def handle_approval(event):
         if user_id in user_states:
             del user_states[user_id]
 
-        # Delete chat history
         try:
             await client.delete_dialog(chat_id, revoke=True)
         except:
