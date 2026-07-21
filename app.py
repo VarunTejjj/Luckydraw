@@ -21,6 +21,7 @@ if not session_string:
     logger.error("❌ SESSION_STRING is missing!")
     exit(1)
 
+# Define UPIS and ADMINS
 UPIS = [x.strip() for x in os.getenv('UPIS', 'varunloves@fam').split(',')]
 ADMINS = [x.strip() for x in os.getenv('ADMINS', 'VarunsLuckyDraw,8935742943').split(',')]
 
@@ -86,7 +87,6 @@ async def handle_private_message(event):
         user_id = event.sender_id
         message_text = event.raw_text.strip().lower()
 
-        # If user is in normal mode and says "lucky draw join"
         if user_id in user_states and user_states[user_id] == 'normal':
             if "lucky draw join" in message_text:
                 user_states[user_id] = 'waiting_yes_no'
