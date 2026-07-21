@@ -131,7 +131,7 @@ async def handle_private_message(event):
                     "📋 **Terms & Conditions** 📋\n\n"
                     "━━━━━━━━━━━━━━━━\n"
                     "🍀 Jo account milega woh aapki **luck** pe depend karta hai\n"
-                    "🏆 Winner ko milenge **₹10 Cash Back** !\n"
+                    "🏆 Winner ko milenge **Netflix Premium** !\n"
                     "⚠️ Payment hone ke baad **refund nahi hoga**\n"
                     "━━━━━━━━━━━━━━━━\n\n"
                     "💳 Neeche QR Code scan karke **₹5** pay karo aur screenshot bhejo! 👇🏻"
@@ -259,7 +259,7 @@ async def handle_approval(event):
                 "✅ Aap **Lucky Draw** Mein Successfully Join Ho Gaye!\n"
                 "━━━━━━━━━━━━━━━━\n\n"
                 "🍀 Ab results ka intezaar karo...\n"
-                "🏆 Winner ko milega **₹10 Cash Back**!\n\n"
+                "🏆 Winner ko milega **Netflix Premium**!\n\n"
                 "💗 Best of Luck — God bless you! 😸✨"
             )
 
