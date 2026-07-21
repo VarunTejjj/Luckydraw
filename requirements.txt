@@ -1,0 +1,4 @@
+telethon==1.36.0
+qrcode[pil]
+pillow
+asyncio
