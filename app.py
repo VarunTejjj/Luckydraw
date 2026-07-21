@@ -26,7 +26,7 @@ DATA_DIR = '/data'
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # Session path (important)
-SESSION_NAME = os.path.join(DATA_DIR, 'lucky_draw_session')
+SESSION_NAME = 'lucky_draw_session'   # Simple name, let Telethon handle path
 PARTICIPANTS_FILE = os.path.join(DATA_DIR, 'participants.json')
 
 client = TelegramClient(SESSION_NAME, api_id, api_hash)
