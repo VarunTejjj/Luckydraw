@@ -8,26 +8,22 @@ import qrcode
 from PIL import Image, ImageDraw, ImageFont
 import logging
 
-# Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Railway Environment Variables
 api_id = int(os.getenv('API_ID'))
 api_hash = os.getenv('API_HASH')
 session_string = os.getenv('SESSION_STRING')
 
 if not session_string:
-    logger.error("❌ SESSION_STRING is missing!")
+    logger.error("SESSION_STRING is missing!")
     exit(1)
 
-# Define UPIS and ADMINS
-UPIS = [x.strip() for x in os.getenv('UPIS', 'varunloves@fam').split(',')]
+UPIS   = [x.strip() for x in os.getenv('UPIS', 'varunloves@fam').split(',')]
 ADMINS = [x.strip() for x in os.getenv('ADMINS', 'VarunsLuckyDraw,8935742943').split(',')]
 
 client = TelegramClient(StringSession(session_string), api_id, api_hash)
 
-# Persistent storage
 DATA_DIR = '/data'
 os.makedirs(DATA_DIR, exist_ok=True)
 PARTICIPANTS_FILE = os.path.join(DATA_DIR, 'participants.json')
@@ -38,12 +34,14 @@ if not os.path.exists(PARTICIPANTS_FILE):
 
 user_states = {}
 
+
 async def load_participants():
     try:
         with open(PARTICIPANTS_FILE, 'r') as f:
             return json.load(f)
-    except:
+    except Exception:
         return []
+
 
 async def save_participant(data):
     participants = await load_participants()
@@ -51,35 +49,36 @@ async def save_participant(data):
     with open(PARTICIPANTS_FILE, 'w') as f:
         json.dump(participants, f, indent=4)
 
+
 def generate_qr(upi, amount="5", user_id="", timestamp=""):
     upi_url = f"upi://pay?pa={upi}&pn=LuckyDraw&am={amount}&cu=INR"
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(upi_url)
     qr.make(fit=True)
-    
+
     img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
     draw = ImageDraw.Draw(img)
-    
+
     try:
         font = ImageFont.truetype("arial.ttf", 20)
-    except:
+    except Exception:
         font = ImageFont.load_default()
-    
+
     texts = [
         "Lucky Draw Participation",
         f"User ID: {user_id}",
         f"Time: {timestamp}",
         f"Amount: ₹{amount}"
     ]
-    
     y = 10
     for text in texts:
         draw.text((10, y), text, fill="black", font=font)
         y += 30
-    
+
     filename = os.path.join(DATA_DIR, f"qr_{user_id}_{int(datetime.now().timestamp())}.png")
     img.save(filename)
     return filename
+
 
 @client.on(events.NewMessage(func=lambda e: e.is_private))
 async def handle_private_message(event):
@@ -90,12 +89,20 @@ async def handle_private_message(event):
         if user_id in user_states and user_states[user_id] == 'normal':
             if "lucky draw join" in message_text:
                 user_states[user_id] = 'waiting_yes_no'
-                await event.reply("Kya Apko Lucky Draw Meh Join Hona Hei?\n\nAgar Join Hona Hei Tho \"Yes\" Bolke Type Karke Send Karo\nAgar Join Nahi Karna Hei Tho \"No\" Bolke Type Karke Send Karo")
+                await event.reply(
+                    "Kya Apko Lucky Draw Meh Join Hona Hei?\n\n"
+                    "Agar Join Hona Hei Tho \"Yes\" Bolke Type Karke Send Karo\n"
+                    "Agar Join Nahi Karna Hei Tho \"No\" Bolke Type Karke Send Karo"
+                )
             return
 
         if user_id not in user_states:
             user_states[user_id] = 'waiting_yes_no'
-            await event.reply("Kya Apko Lucky Draw Meh Join Hona Hei?\n\nAgar Join Hona Hei Tho \"Yes\" Bolke Type Karke Send Karo\nAgar Join Nahi Karna Hei Tho \"No\" Bolke Type Karke Send Karo")
+            await event.reply(
+                "Kya Apko Lucky Draw Meh Join Hona Hei?\n\n"
+                "Agar Join Hona Hei Tho \"Yes\" Bolke Type Karke Send Karo\n"
+                "Agar Join Nahi Karna Hei Tho \"No\" Bolke Type Karke Send Karo"
+            )
             return
 
         current_state = user_states.get(user_id)
@@ -103,19 +110,30 @@ async def handle_private_message(event):
         if current_state == 'waiting_yes_no':
             if message_text == "yes":
                 user_states[user_id] = 'waiting_payment'
-                await event.reply("""T&C
-The account you get it will depend on your luck 
-Winner gets ₹10 in return""")
-                
+                await event.reply(
+                    "T&C\n"
+                    "The account you get it will depend on your luck\n"
+                    "Winner gets ₹10 in return"
+                )
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 upi = UPIS[0]
                 qr_file = generate_qr(upi, "5", str(user_id), now)
-                
-                await event.reply(file=qr_file, message=f"Lucky Draw Participation\nUser ID: {user_id}\nTime: {now}\nDate: {datetime.now().date()}\n\nAfter making payment send us the screenshot.")
+                await event.reply(
+                    file=qr_file,
+                    message=(
+                        f"Lucky Draw Participation\n"
+                        f"User ID: {user_id}\n"
+                        f"Time: {now}\n"
+                        f"Date: {datetime.now().date()}\n\n"
+                        f"After making payment send us the screenshot."
+                    )
+                )
 
             elif message_text == "no":
                 user_states[user_id] = 'normal'
-                await event.reply('Agar Apko Kabhitho lucky draw join karna hei tho bas "Lucky Draw Join" Bolke send karo')
+                await event.reply(
+                    'Agar Apko Kabhitho lucky draw join karna hei tho bas "Lucky Draw Join" Bolke send karo'
+                )
 
         elif current_state == 'waiting_payment':
             if "new qr" in message_text:
@@ -134,42 +152,75 @@ Winner gets ₹10 in return""")
     except Exception as e:
         logger.error(f"Error: {e}")
 
+
 @client.on(events.NewMessage(pattern=r'/approved', func=lambda e: e.is_private))
 async def handle_approval(event):
     try:
         sender = await event.get_sender()
-        if str(event.sender_id) not in ADMINS and (sender.username not in ADMINS if sender.username else True):
+        is_admin = (
+            str(event.sender_id) in ADMINS or
+            (sender.username and sender.username in ADMINS)
+        )
+        if not is_admin:
             return
 
         chat_id = event.chat_id
         user_id = chat_id
 
-        await event.reply("You Have Successfully Participated In The Lucky Draw 👍🏻\n\nWait For The Results To Win The Price , Good Luck 😸💗")
+        # ── Send approval message to user — chat stays intact ──
+        await event.reply(
+            "You Have Successfully Participated In The Lucky Draw 👍🏻\n\n"
+            "Wait For The Results To Win The Price , Good Luck 😸💗"
+        )
 
+        # ── Save participant to JSON ──
         data = {
-            "chat_id": chat_id,
-            "user_id": user_id,
-            "time": datetime.now().isoformat(),
-            "payment": "Approved",
-            "status": "Participated"
+            "chat_id":  chat_id,
+            "user_id":  user_id,
+            "time":     datetime.now().isoformat(),
+            "payment":  "Approved",
+            "status":   "Participated"
         }
         await save_participant(data)
 
+        # ── Get participant count for numbering ──
+        participants = await load_participants()
+        count = len(participants)
+
+        # ── Fetch user info ──
+        try:
+            user_entity = await client.get_entity(user_id)
+            username = f"@{user_entity.username}" if user_entity.username else "No username"
+            nickname = user_entity.first_name or "No name"
+        except Exception:
+            username = "Unknown"
+            nickname = "Unknown"
+
+        # ── Log to Saved Messages ──
+        log_msg = (
+            f"✅ #{count} Joined\n"
+            f"👤 User ID : `{user_id}`\n"
+            f"🔗 Username : {username}\n"
+            f"📛 Nickname : {nickname}\n"
+            f"🕐 Time : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        await client.send_message("me", log_msg, parse_mode="md")
+
+        # ── Reset user state ──
         if user_id in user_states:
             del user_states[user_id]
 
-        try:
-            await client.delete_dialog(chat_id, revoke=True)
-        except:
-            pass
+        # NOTE: Chat is NOT deleted — only approval message sent ✅
 
     except Exception as e:
         logger.error(f"Approval error: {e}")
 
+
 async def main():
     await client.start()
-    logger.info("✅ Lucky Draw Bot Started Successfully with StringSession!")
+    logger.info("Lucky Draw Bot Started Successfully!")
     await client.run_until_disconnected()
+
 
 if __name__ == '__main__':
     asyncio.run(main())
