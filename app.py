@@ -4,7 +4,6 @@ import os
 from datetime import datetime
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
-from telethon.tl.functions.messages import DeleteHistoryRequest
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 import logging
@@ -87,72 +86,131 @@ async def handle_private_message(event):
     try:
         user_id = event.sender_id
 
-        # Ignore if this user is being approved right now
         if user_id in approving_users:
             return
 
         message_text = event.raw_text.strip().lower()
 
+        # ── Re-trigger if user types "lucky draw join" in normal state ──
         if user_id in user_states and user_states[user_id] == 'normal':
             if "lucky draw join" in message_text:
                 user_states[user_id] = 'waiting_yes_no'
                 await event.reply(
-                    "Kya Apko Lucky Draw Meh Join Hona Hei?\n\n"
-                    "Agar Join Hona Hei Tho \"Yes\" Bolke Type Karke Send Karo\n"
-                    "Agar Join Nahi Karna Hei Tho \"No\" Bolke Type Karke Send Karo"
+                    "🎉 **Lucky Draw Mein Swagat Hai!** 🎉\n\n"
+                    "━━━━━━━━━━━━━━━━\n"
+                    "🤔 Kya Aap Lucky Draw Mein Join Karna Chahte Ho?\n"
+                    "━━━━━━━━━━━━━━━━\n\n"
+                    "✅ Join Karne Ke Liye Type Karo ➜ `Yes`\n"
+                    "❌ Join Nahi Karna Tho Type Karo ➜ `No`"
                 )
             return
 
+        # ── First time user ──
         if user_id not in user_states:
             user_states[user_id] = 'waiting_yes_no'
             await event.reply(
-                "Kya Apko Lucky Draw Meh Join Hona Hei?\n\n"
-                "Agar Join Hona Hei Tho \"Yes\" Bolke Type Karke Send Karo\n"
-                "Agar Join Nahi Karna Hei Tho \"No\" Bolke Type Karke Send Karo"
+                "🎉 **Lucky Draw Mein Swagat Hai!** 🎉\n\n"
+                "━━━━━━━━━━━━━━━━\n"
+                "🤔 Kya Aap Lucky Draw Mein Join Karna Chahte Ho?\n"
+                "━━━━━━━━━━━━━━━━\n\n"
+                "✅ Join Karne Ke Liye Type Karo ➜ `Yes`\n"
+                "❌ Join Nahi Karna Tho Type Karo ➜ `No`"
             )
             return
 
         current_state = user_states.get(user_id)
 
+        # ── State: Yes / No ──
         if current_state == 'waiting_yes_no':
             if message_text == "yes":
                 user_states[user_id] = 'waiting_payment'
+
+                # T&C message
                 await event.reply(
-                    "T&C\n"
-                    "The account you get it will depend on your luck\n"
-                    "Winner gets ₹10 in return"
+                    "📋 **Terms & Conditions** 📋\n\n"
+                    "━━━━━━━━━━━━━━━━\n"
+                    "🍀 Jo account milega woh aapki **luck** pe depend karta hai\n"
+                    "🏆 Winner ko milenge **₹10 Cash Back** !\n"
+                    "⚠️ Payment hone ke baad **refund nahi hoga**\n"
+                    "━━━━━━━━━━━━━━━━\n\n"
+                    "💳 Neeche QR Code scan karke **₹5** pay karo aur screenshot bhejo! 👇🏻"
                 )
+
+                # QR message
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 qr_file = generate_qr(UPIS[0], "5", str(user_id), now)
                 await event.reply(
                     file=qr_file,
                     message=(
-                        f"Lucky Draw Participation\n"
-                        f"User ID: {user_id}\n"
-                        f"Time: {now}\n"
-                        f"Date: {datetime.now().date()}\n\n"
-                        f"After making payment send us the screenshot."
+                        "💳 **Payment QR Code**\n\n"
+                        "━━━━━━━━━━━━━━━━\n"
+                        f"🎟 Product  : Lucky Draw Entry\n"
+                        f"💰 Amount   : ₹5\n"
+                        f"🆔 User ID  : `{user_id}`\n"
+                        f"📅 Date     : {datetime.now().strftime('%d-%m-%Y')}\n"
+                        f"🕐 Time     : {datetime.now().strftime('%I:%M %p')}\n"
+                        "━━━━━━━━━━━━━━━━\n\n"
+                        "📸 Payment ke baad **screenshot bhejo** — hum verify kar denge!\n\n"
+                        "🔄 QR kaam nahi kar raha? Type karo ➜ `NEW QR`"
                     )
                 )
+
             elif message_text == "no":
                 user_states[user_id] = 'normal'
                 await event.reply(
-                    'Agar Apko Kabhitho lucky draw join karna hei tho bas "Lucky Draw Join" Bolke send karo'
+                    "😊 **Koi Baat Nahi!**\n\n"
+                    "━━━━━━━━━━━━━━━━\n"
+                    "🎯 Jab bhi Lucky Draw join karna ho, bas type karo 👇🏻\n\n"
+                    "`Lucky Draw Join`\n\n"
+                    "━━━━━━━━━━━━━━━━\n"
+                    "🍀 Best of luck aage ke liye! 💗"
                 )
 
+        # ── State: Waiting for Payment Screenshot ──
         elif current_state == 'waiting_payment':
             if "new qr" in message_text:
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 qr_file = generate_qr(UPIS[0], "5", str(user_id), now)
-                await event.reply(file=qr_file, message="New QR Code generated.")
+                await event.reply(
+                    file=qr_file,
+                    message=(
+                        "🔄 **Naya QR Code Generate Hua!**\n\n"
+                        "━━━━━━━━━━━━━━━━\n"
+                        f"🎟 Product  : Lucky Draw Entry\n"
+                        f"💰 Amount   : ₹5\n"
+                        f"🆔 User ID  : `{user_id}`\n"
+                        f"📅 Date     : {datetime.now().strftime('%d-%m-%Y')}\n"
+                        f"🕐 Time     : {datetime.now().strftime('%I:%M %p')}\n"
+                        "━━━━━━━━━━━━━━━━\n\n"
+                        "📸 Payment ke baad **screenshot bhejo**!\n\n"
+                        "🔄 Phir bhi kaam nahi kar raha? Type karo ➜ `NEW QR`"
+                    )
+                )
             elif event.message.photo or "screenshot" in message_text:
-                await event.reply("Wait for admin approval (5 minutes) ✅")
+                await event.reply(
+                    "✅ **Screenshot Mil Gayi!**\n\n"
+                    "━━━━━━━━━━━━━━━━\n"
+                    "⏳ Admin verification kar rahe hain...\n"
+                    "🕐 Please **5 minutes** wait karo\n"
+                    "━━━━━━━━━━━━━━━━\n\n"
+                    "💗 Aapka patience ke liye shukriya! 🙏🏻"
+                )
                 user_states[user_id] = 'waiting_approval'
             else:
-                await event.reply("Please send payment screenshot or type NEW QR")
+                await event.reply(
+                    "⚠️ **Oops!**\n\n"
+                    "📸 Payment ka **screenshot bhejo** ya type karo ➜ `NEW QR`"
+                )
 
+        # ── State: Waiting for Admin Approval ──
         elif current_state == 'waiting_approval':
-            await event.reply("Already waiting for admin approval.")
+            await event.reply(
+                "⏳ **Already Waiting...**\n\n"
+                "━━━━━━━━━━━━━━━━\n"
+                "🔍 Admin abhi aapki payment verify kar rahe hain\n"
+                "💗 Thoda sa aur wait karo — bas 5 minutes! 🙏🏻\n"
+                "━━━━━━━━━━━━━━━━"
+            )
 
     except Exception as e:
         logger.error(f"Error: {e}")
@@ -175,29 +233,32 @@ async def handle_approval(event):
         approving_users.add(user_id)
 
         try:
-            # ── Step 1: Collect all message IDs in this chat ──
+            # ── Step 1: Collect all message IDs ──
             message_ids = []
             async for msg in client.iter_messages(chat_id):
                 message_ids.append(msg.id)
 
-            # ── Step 2: Delete all collected messages from BOTH sides ──
+            # ── Step 2: Delete all messages (both sides) ──
             if message_ids:
-                # Delete in batches of 100 (Telegram limit)
                 for i in range(0, len(message_ids), 100):
                     batch = message_ids[i:i+100]
                     await client.delete_messages(chat_id, batch, revoke=True)
 
-            # ── Step 3: Small pause so deletion settles ──
             await asyncio.sleep(1)
 
-            # ── Step 4: Send approval message AFTER deletion ──
+            # ── Step 3: Send approval message ──
             await client.send_message(
                 chat_id,
-                "You Have Successfully Participated In The Lucky Draw 👍🏻\n\n"
-                "Wait For The Results To Win The Price , Good Luck 😸💗"
+                "🎉 **Congratulations!** 🎉\n\n"
+                "━━━━━━━━━━━━━━━━\n"
+                "✅ Aap **Lucky Draw** Mein Successfully Join Ho Gaye!\n"
+                "━━━━━━━━━━━━━━━━\n\n"
+                "🍀 Ab results ka intezaar karo...\n"
+                "🏆 Winner ko milega **₹10 Cash Back**!\n\n"
+                "💗 Best of Luck — God bless you! 😸✨"
             )
 
-            # ── Step 5: Save participant ──
+            # ── Step 4: Save participant ──
             data = {
                 "chat_id": chat_id,
                 "user_id": user_id,
@@ -207,7 +268,7 @@ async def handle_approval(event):
             }
             await save_participant(data)
 
-            # ── Step 6: Count and get user info ──
+            # ── Step 5: Log to Saved Messages ──
             participants = await load_participants()
             count = len(participants)
 
@@ -219,17 +280,18 @@ async def handle_approval(event):
                 username = "Unknown"
                 nickname = "Unknown"
 
-            # ── Step 7: Log to Saved Messages ──
             log_msg = (
-                f"✅ #{count} Joined\n"
-                f"👤 User ID : `{user_id}`\n"
-                f"🔗 Username : {username}\n"
-                f"📛 Nickname : {nickname}\n"
-                f"🕐 Time : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                f"✅ #{count} Joined Lucky Draw\n"
+                f"━━━━━━━━━━━━━━━━\n"
+                f"👤 User ID   : `{user_id}`\n"
+                f"🔗 Username  : {username}\n"
+                f"📛 Nickname  : {nickname}\n"
+                f"🕐 Time      : {datetime.now().strftime('%d-%m-%Y %I:%M %p')}\n"
+                f"━━━━━━━━━━━━━━━━"
             )
             await client.send_message("me", log_msg, parse_mode="md")
 
-            # ── Step 8: Reset user state ──
+            # ── Step 6: Reset user state ──
             if user_id in user_states:
                 del user_states[user_id]
 
@@ -245,7 +307,7 @@ async def handle_approval(event):
 
 async def main():
     await client.start()
-    logger.info("Lucky Draw Bot Started Successfully!")
+    logger.info("✅ Lucky Draw Bot Started Successfully!")
     await client.run_until_disconnected()
 
 
